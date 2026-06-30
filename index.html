@@ -189,7 +189,7 @@ async function deleteItem(list, id) {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).substr(2); }
 function fmtDate(d) { if (!d) return '—'; return new Date(d+'T12:00:00').toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'}); }
 function fmtDateTime(d) { if (!d) return '—'; return new Date(d).toLocaleString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-function daysUntil(d) { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 86400000); }
+function daysUntil(d) { if (!d) return null; const today = new Date(); today.setHours(0,0,0,0); const target = new Date(d); target.setHours(0,0,0,0); return Math.round((target - today) / 86400000); }
 function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 let currentSection = 'dashboard';
