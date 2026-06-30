@@ -118,6 +118,7 @@
     <button onclick="showSection('todos')"><span class="icon">✅</span><span>To-Do</span></button>
     <button onclick="showSection('tagebuch')"><span class="icon">📓</span><span>Forschungstagebuch</span></button>
     <button onclick="showSection('kontakte')"><span class="icon">👥</span><span>Kontakte</span></button>
+    <button onclick="showSection('literatur')"><span class="icon">📚</span><span>What to Read</span></button>
   </nav>
   <div id="sync-info"><span id="sync-dot"></span><span id="sync-label">Verbunden</span></div>
 </div>
@@ -140,7 +141,7 @@ const SUPABASE_KEY = 'sb_publishable_qIR0v_iUl_7Mgpdz_j5-Mg_JIi80BeV';
 const { createClient } = window.supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let data = { meilensteine: [], termine: [], todos: [], tagebuch: [], kontakte: [] };
+let data = { meilensteine: [], termine: [], todos: [], tagebuch: [], kontakte: [], literatur: [] };
 
 function setSyncStatus(s) {
   const dot = document.getElementById('sync-dot');
@@ -154,18 +155,20 @@ function setSyncStatus(s) {
 async function loadAll() {
   setSyncStatus('loading');
   try {
-    const [m, t, td, tb, k] = await Promise.all([
+    const [m, t, td, tb, k, l] = await Promise.all([
       sb.from('meilensteine').select('*').order('created_at'),
       sb.from('termine').select('*').order('datum'),
       sb.from('todos').select('*').order('created_at'),
       sb.from('tagebuch').select('*').order('datum', { ascending: false }),
-      sb.from('kontakte').select('*').order('name')
+      sb.from('kontakte').select('*').order('name'),
+      sb.from('literatur').select('*').order('created_at')
     ]);
     data.meilensteine = m.data || [];
     data.termine = t.data || [];
     data.todos = td.data || [];
     data.tagebuch = tb.data || [];
     data.kontakte = k.data || [];
+    data.literatur = l.data || [];
     setSyncStatus('ok');
   } catch(e) { setSyncStatus('error'); console.error(e); }
 }
@@ -200,7 +203,7 @@ function showSection(s) {
 }
 function renderCurrent() { renderSection(currentSection); }
 function renderSection(s) {
-  const titles = {dashboard:'Übersicht',meilensteine:'Meilensteine',termine:'Termine & Interviews',todos:'To-Do Liste',tagebuch:'Forschungstagebuch',kontakte:'Kontaktliste'};
+  const titles = {dashboard:'Übersicht',meilensteine:'Meilensteine',termine:'Termine & Interviews',todos:'To-Do Liste',tagebuch:'Forschungstagebuch',kontakte:'Kontaktliste',literatur:'📚 What to Read'};
   document.getElementById('page-title').textContent = titles[s]||'';
   const actions = document.getElementById('topbar-actions'); actions.innerHTML = '';
   const content = document.getElementById('content');
@@ -210,6 +213,7 @@ function renderSection(s) {
   else if (s==='todos') { actions.innerHTML='<button class="btn btn-primary" onclick="openTodoModal()">+ Aufgabe</button>'; renderTodos(content); }
   else if (s==='tagebuch') { actions.innerHTML='<button class="btn btn-primary" onclick="openEintragModal()">+ Eintrag</button>'; renderTagebuch(content); }
   else if (s==='kontakte') { actions.innerHTML='<button class="btn btn-primary" onclick="openKontaktModal()">+ Kontakt</button>'; renderKontakte(content); }
+  else if (s==='literatur') { actions.innerHTML='<button class="btn btn-primary" onclick="openLiteraturModal()">+ Literatur</button>'; renderLiteratur(content); }
 }
 
 function renderDashboard(el) {
@@ -412,6 +416,93 @@ async function saveKontakt(e,id){
   const obj={id:id||uid(),name:f.get('name'),institution:f.get('institution'),funktion:f.get('funktion'),email:f.get('email'),telefon:f.get('telefon'),interview_status:f.get('interview_status'),interview_datum:f.get('interview_datum')||null,notiz:f.get('notiz')};
   const ok=await upsertItem('kontakte',obj);
   if(ok){if(id){const i=data.kontakte.findIndex(x=>x.id===id);data.kontakte[i]=obj;}else data.kontakte.push(obj);closeModal();renderKontakte(document.getElementById('content'));}
+}
+
+// ====== LITERATUR ======
+function litStatusBadge(s) {
+  if (s==='Zu lesen') return '<span class="badge badge-gray">Zu lesen</span>';
+  if (s==='Am Lesen') return '<span class="badge badge-blue">Am Lesen</span>';
+  if (s==='Gelesen') return '<span class="badge badge-green">Gelesen</span>';
+  return '<span class="badge badge-gray">'+esc(s)+'</span>';
+}
+function litTypBadge(t) {
+  if (t==='Theorie') return '<span class="badge badge-yellow">Theorie</span>';
+  if (t==='Methode') return '<span class="badge badge-blue">Methode</span>';
+  return '<span class="badge badge-gray">'+esc(t)+'</span>';
+}
+
+function renderLiteratur(el) {
+  const gruppen = ['Zu lesen','Am Lesen','Gelesen'];
+  el.innerHTML = `<div style="margin-bottom:12px"><input placeholder="🔍 Literatur durchsuchen…" oninput="filterLiteratur(this.value)" style="max-width:320px"></div>` +
+    gruppen.map(g => {
+      const items = data.literatur.filter(l => l.status === g);
+      if (items.length === 0) return '';
+      return `<div class="card">
+        <div class="card-header"><h3>${g==='Zu lesen'?'📋':g==='Am Lesen'?'👓':'✅'} ${g} (${items.length})</h3></div>
+        ${items.map(l => `<div class="lit-item" data-search="${esc(l.titel+' '+(l.autor||'')+' '+(l.notizen||''))}">
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <strong style="font-size:14px">${esc(l.titel)}</strong>
+                ${litTypBadge(l.typ)}
+              </div>
+              ${l.autor?`<div style="font-size:12px;color:var(--text-muted);margin-top:2px">${esc(l.autor)}</div>`:''}
+              ${l.notizen?`<div style="font-size:13px;color:#374151;margin-top:8px;padding:8px 12px;background:#f8faff;border-radius:6px;white-space:pre-wrap">${esc(l.notizen)}</div>`:''}
+            </div>
+            <div class="actions">
+              <button class="btn btn-sm btn-ghost" onclick="openLiteraturModal('${l.id}')">✏</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteItem('literatur','${l.id}')">🗑</button>
+            </div>
+          </div>
+        </div>`).join('')}
+      </div>`;
+    }).join('') +
+    (data.literatur.length===0 ? `<div class="card"><div class="empty-state"><div class="emoji">📚</div><p>Füge deine erste Literatur hinzu!</p></div></div>` : '');
+}
+
+function filterLiteratur(q) {
+  document.querySelectorAll('.lit-item').forEach(i => {
+    i.style.display = i.dataset.search?.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function openLiteraturModal(id) {
+  const l = id ? data.literatur.find(x=>x.id===id) : null;
+  showModal(`<h3>${l?'Literatur bearbeiten':'Neue Literatur'}</h3>
+    <form class="form-grid" onsubmit="saveLiteratur(event,'${id||''}')">
+      <div class="form-group full"><label>Titel *</label><input name="titel" required value="${esc(l?.titel||'')}" placeholder="Buchtitel oder Artikelname"></div>
+      <div class="form-group full"><label>Autor*in</label><input name="autor" value="${esc(l?.autor||'')}" placeholder="Nachname, Vorname"></div>
+      <div class="form-group"><label>Kategorie</label>
+        <select name="typ">
+          <option value="Theorie" ${(!l||l.typ==='Theorie')?'selected':''}>Theorie</option>
+          <option value="Methode" ${l?.typ==='Methode'?'selected':''}>Methode</option>
+          <option value="Empirie" ${l?.typ==='Empirie'?'selected':''}>Empirie</option>
+          <option value="Sonstiges" ${l?.typ==='Sonstiges'?'selected':''}>Sonstiges</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select name="status">
+          <option value="Zu lesen" ${(!l||l.status==='Zu lesen')?'selected':''}>Zu lesen</option>
+          <option value="Am Lesen" ${l?.status==='Am Lesen'?'selected':''}>Am Lesen</option>
+          <option value="Gelesen" ${l?.status==='Gelesen'?'selected':''}>Gelesen</option>
+        </select>
+      </div>
+      <div class="form-group full"><label>Notizen</label><textarea name="notizen" style="min-height:120px" placeholder="Gedanken, Zitate, wichtige Stellen…">${esc(l?.notizen||'')}</textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>`);
+}
+
+async function saveLiteratur(e, id) {
+  e.preventDefault(); const f = new FormData(e.target);
+  const obj = { id: id||uid(), titel: f.get('titel'), autor: f.get('autor'), typ: f.get('typ'), status: f.get('status'), notizen: f.get('notizen') };
+  const ok = await upsertItem('literatur', obj);
+  if (ok) {
+    if (id) { const i = data.literatur.findIndex(x=>x.id===id); data.literatur[i]=obj; } else data.literatur.push(obj);
+    closeModal(); renderLiteratur(document.getElementById('content'));
+  }
 }
 
 function showModal(html){document.getElementById('modal-content').innerHTML=html;document.getElementById('modal').style.display='flex';}
